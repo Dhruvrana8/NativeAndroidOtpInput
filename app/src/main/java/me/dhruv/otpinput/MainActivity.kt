@@ -1,5 +1,8 @@
 package me.dhruv.otpinput;
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.widget.EditText
 import android.text.Editable
@@ -7,7 +10,9 @@ import android.text.TextWatcher
 import android.view.View
 import android.view.KeyEvent
 import androidx.appcompat.app.AppCompatActivity
-
+import com.google.android.gms.auth.api.phone.SmsRetriever
+import android.content.IntentFilter
+import android.util.Log
 
 class MainActivity : AppCompatActivity() {
 
@@ -15,6 +20,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var otpDigit2: EditText
     private lateinit var otpDigit3: EditText
     private lateinit var otpDigit4: EditText
+
+    private lateinit var smsReceiver: BroadcastReceiver
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -26,6 +33,26 @@ class MainActivity : AppCompatActivity() {
         otpDigit4 = findViewById(R.id.otpDigit4)
 
         setEditTextListeners()
+
+        // Initialize SMS receiver
+        smsReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (SmsRetriever.SMS_RETRIEVED_ACTION == intent?.action) {
+                    val extras = intent.extras
+                    val smsMessage = extras?.get(SmsRetriever.EXTRA_SMS_MESSAGE) as String
+                    Log.d("MainActivity", "SMS retrieval started successfully smsMessage ${smsMessage}")
+
+                    // Extract the OTP from the SMS message and fill the EditTexts
+                    handleOtpReceived(smsMessage)
+                }
+            }
+        }
+
+        // Register SMS receiver
+        registerReceiver(smsReceiver, IntentFilter(SmsRetriever.SMS_RETRIEVED_ACTION))
+
+        // Start SMS retrieval
+        startSmsRetrieval()
     }
 
     private fun setEditTextListeners() {
@@ -64,6 +91,45 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
+    private fun startSmsRetrieval() {
+        val client = SmsRetriever.getClient(this)
+        val task = client.startSmsRetriever()
+
+        task.addOnSuccessListener {
+            // SMS retrieval has started successfully
+            Log.d("MainActivity", "SMS retrieval started successfully")
+        }
+
+        task.addOnFailureListener {
+            // SMS retrieval failed
+            Log.e("MainActivity", "SMS retrieval failed")
+        }
+    }
+
+    private fun handleOtpReceived(smsMessage: String) {
+        val otp = extractOtp(smsMessage)
+        Log.d("MainActivity", "Received OTP: $otp")
+        fillOtpInEditText(otp)
+    }
+
+    private fun extractOtp(smsMessage: String): String {
+        Log.d("MainActivity", "Received SMS: $smsMessage")
+
+        // Implement your logic to extract the OTP from the SMS message
+        // This may involve parsing the message or using a regular expression
+        val pattern = Regex("\\b(\\d{4})\\b")  // Adjust to match the length of your OTP
+        val matchResult = pattern.find(smsMessage)
+        return matchResult?.groupValues?.get(1) ?: ""
+    }
+
+    private fun fillOtpInEditText(otp: String) {
+        otpDigit1.setText(otp.getOrNull(0).toString())
+        otpDigit2.setText(otp.getOrNull(1).toString())
+        otpDigit3.setText(otp.getOrNull(2).toString())
+        otpDigit4.setText(otp.getOrNull(3).toString())
+    }
+
+
     private fun findPreviousView(currentView: EditText): EditText? {
         return when (currentView) {
             otpDigit2 -> otpDigit1
@@ -72,4 +138,11 @@ class MainActivity : AppCompatActivity() {
             else -> null
         }
     }
+
+    override fun onDestroy() {
+        // Unregister SMS receiver
+        unregisterReceiver(smsReceiver)
+        super.onDestroy()
+    }
 }
+
